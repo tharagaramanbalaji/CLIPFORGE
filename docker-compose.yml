@@ -1,0 +1,78 @@
+# Dev stack. Run from WSL2/Docker Desktop:  docker compose up --build
+# Frontend runs on the host (npm run dev) and proxies /api to :8000.
+
+x-backend: &backend
+  build: ./backend
+  image: clipforge-backend:dev
+  env_file:
+    - path: .env
+      required: false
+  environment:
+    CLIPFORGE_DATABASE_URL: postgresql+psycopg://clipforge:clipforge@postgres:5432/clipforge
+    CLIPFORGE_REDIS_URL: redis://redis:6379/0
+    CLIPFORGE_DATA_DIR: /data
+  volumes:
+    - ./backend:/app              # live code reload in dev
+    - clipforge-data:/data        # media lives on the WSL2 filesystem (ADR-0002)
+  depends_on:
+    postgres: { condition: service_healthy }
+    redis: { condition: service_healthy }
+
+x-gpu: &gpu
+  deploy:
+    resources:
+      reservations:
+        devices:
+          - driver: nvidia
+            count: all
+            capabilities: [gpu, compute, video, utility]
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: clipforge
+      POSTGRES_PASSWORD: clipforge
+      POSTGRES_DB: clipforge
+    ports: ["127.0.0.1:5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U clipforge"]
+      interval: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    <<: *backend
+    command: ["alembic", "upgrade", "head"]
+    restart: "no"
+
+  api:
+    <<: *backend
+    command: ["uvicorn", "clipforge.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload", "--reload-dir", "src"]
+    ports: ["127.0.0.1:8000:8000"]
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker-gpu:
+    <<: [*backend, *gpu]
+    command: ["celery", "-A", "clipforge.workers.celery_app", "worker", "-Q", "gpu", "-c", "1", "-n", "gpu@%h", "-l", "INFO"]
+
+  worker-render:
+    <<: [*backend, *gpu]
+    command: ["celery", "-A", "clipforge.workers.celery_app", "worker", "-Q", "render", "-c", "1", "-n", "render@%h", "-l", "INFO"]
+
+  worker-cpu:
+    <<: *backend
+    command: ["celery", "-A", "clipforge.workers.celery_app", "worker", "-Q", "cpu,llm", "-c", "4", "-n", "cpu@%h", "-l", "INFO"]
+
+volumes:
+  pgdata:
+  clipforge-data:
