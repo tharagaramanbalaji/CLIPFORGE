@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import BigInteger, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import BigInteger, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from clipforge.db.base import Base
@@ -27,6 +28,12 @@ class Clip(IdMixin, TimestampMixin, Base):
     start_ms: Mapped[int] = mapped_column(BigInteger)  # current (user-editable) bounds
     end_ms: Mapped[int] = mapped_column(BigInteger)
     status: Mapped[str] = mapped_column(String(32), default="draft")  # draft|rendering|rendered|failed
+    review: Mapped[str] = mapped_column(
+        String(16), default="pending", server_default="pending"
+    )  # pending|approved|rejected
+    reject_reason: Mapped[str | None] = mapped_column(Text)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     current_version_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("clip_versions.id", ondelete="SET NULL", use_alter=True, name="fk_clips_current_version")
     )
@@ -60,3 +67,20 @@ class SubtitleTrack(IdMixin, TimestampMixin, Base):
     clip_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("clips.id", ondelete="CASCADE"), unique=True)
     words: Mapped[list[dict[str, Any]]] = mapped_column(Json)  # [{w, s, e}]
     edited_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+
+
+class AuditEvent(IdMixin, Base):
+    """Who did what, when (spec §5.5). Written for every user action on clips."""
+
+    __tablename__ = "audit_events"
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("workspaces.id", ondelete="CASCADE"), index=True
+    )
+    actor_user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(
+        String(64)
+    )  # clip.create, clip.update, clip.render, clip.approve, ...
+    entity_type: Mapped[str] = mapped_column(String(32))
+    entity_id: Mapped[uuid.UUID] = mapped_column(index=True)
+    data: Mapped[JsonDict] = mapped_column(Json, default=dict)
+    at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)

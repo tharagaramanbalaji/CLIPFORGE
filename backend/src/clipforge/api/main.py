@@ -7,7 +7,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from clipforge import __version__
-from clipforge.api.routers import analysis, auth, catalog, clips, events, health, highlights, media, uploads
+from clipforge.api.routers import (
+    analysis,
+    auth,
+    catalog,
+    clips,
+    events,
+    health,
+    highlights,
+    media,
+    review,
+    uploads,
+)
 from clipforge.config import Environment, Settings, get_settings
 from clipforge.errors import (
     ClipForgeError,
@@ -58,7 +69,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
     app.add_exception_handler(ClipForgeError, _clipforge_error)
-    for module in (health, auth, catalog, uploads, media, analysis, highlights, clips, events):
+    for module in (health, auth, catalog, uploads, media, analysis, highlights, clips, review, events):
         app.include_router(module.router, prefix=API_PREFIX)
     return app
 

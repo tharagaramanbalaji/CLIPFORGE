@@ -113,6 +113,9 @@ class ClipOut(BaseModel):
     end_ms: int
     status: str
     current_version_id: uuid.UUID | None
+    review: str = "pending"
+    reject_reason: str | None = None
+    reviewed_at: datetime | None = None
     created_at: datetime
     latest_version: VersionOut | None = None
 
@@ -138,6 +141,12 @@ def _clip_out(db: DbSession, c: Clip) -> ClipOut:
         if out.latest_version.status == "failed" and c.status == "rendering":
             out.status = "failed"
     return out
+
+
+def _audit(db: DbSession, p: CurrentPrincipal, action: str, etype: str, eid: uuid.UUID, **data: Any) -> None:
+    from clipforge.api.routers.review import audit
+
+    audit(db, p, action, etype, eid, **data)
 
 
 def get_clip(db: DbSession, p: CurrentPrincipal, clip_id: uuid.UUID) -> Clip:
@@ -184,6 +193,18 @@ def create_clips(media_id: uuid.UUID, body: ClipsIn, db: DbSession, p: CurrentPr
             )
         )
     db.add_all(clips)
+    db.flush()
+    for c in clips:
+        _audit(
+            db,
+            p,
+            "clip.create",
+            "clip",
+            c.id,
+            candidate_id=str(c.candidate_id) if c.candidate_id else None,
+            start_ms=c.start_ms,
+            end_ms=c.end_ms,
+        )
     db.commit()
     return [_clip_out(db, c) for c in clips]
 
@@ -214,6 +235,7 @@ def update_clip(clip_id: uuid.UUID, body: ClipPatch, db: DbSession, p: CurrentPr
         clip.title = body.title
     if body.hook_text is not None:
         clip.hook_text = body.hook_text
+    _audit(db, p, "clip.update", "clip", clip.id, **body.model_dump(exclude_none=True))
     db.commit()
     return _clip_out(db, clip)
 
@@ -299,6 +321,17 @@ def render(
         db, asset, PipelineKind.RENDER, config={"clip_version_id": str(version.id)}, requested_by=p.user.id
     )
     version.pipeline_run_id, clip.status = run.id, "rendering"
+    _audit(
+        db,
+        p,
+        "clip.render",
+        "clip",
+        clip.id,
+        version=n,
+        preset=body.preset,
+        frame_mode=body.frame_mode,
+        subtitle_style=body.subtitle_style,
+    )
     db.commit()
     orchestrator.advance(db, run.id, dispatch)
     db.refresh(clip)
@@ -418,6 +451,7 @@ def put_subtitles(clip_id: uuid.UUID, body: SubtitlesIn, db: DbSession, p: Curre
         track = SubtitleTrack(clip_id=clip.id, words=[], edited_by=p.user.id)
         db.add(track)
     track.words, track.edited_by = [w.model_dump() for w in body.words], p.user.id
+    _audit(db, p, "clip.subtitles_edit", "clip", clip.id, words=len(body.words))
     db.commit()
     return _subtitles_out(db, clip)
 
@@ -429,6 +463,7 @@ def reset_subtitles(clip_id: uuid.UUID, db: DbSession, p: CurrentPrincipal) -> S
     track = db.scalar(select(SubtitleTrack).where(SubtitleTrack.clip_id == clip.id))
     if track is not None:
         db.delete(track)
+        _audit(db, p, "clip.subtitles_reset", "clip", clip.id)
         db.commit()
     return _subtitles_out(db, clip)
 

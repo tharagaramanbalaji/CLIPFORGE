@@ -14,6 +14,7 @@ import {
   type RightsBasis,
 } from "./api/client";
 import { ClipsPanel } from "./Clips";
+import { ReviewPage } from "./Review";
 import { uploadFile, type Progress } from "./upload";
 
 // ---------- small UI pieces ----------
@@ -339,6 +340,7 @@ const STATUS_COLOR: Record<string, string> = {
 
 function MediaList({ project }: { project: Project }) {
   const qc = useQueryClient();
+  const [reviewing, setReviewing] = useState<Media | null>(null);
   const media = useQuery({
     queryKey: ["media", project.id],
     queryFn: () => apiGet<Media[]>(`/projects/${project.id}/media`),
@@ -348,6 +350,9 @@ function MediaList({ project }: { project: Project }) {
     mutationFn: ({ path, method }: { path: string; method: "POST" | "DELETE" }) => apiSend(method, path),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["media"] }),
   });
+  if (reviewing) {
+    return <ReviewPage mediaId={reviewing.id} name={reviewing.original_filename} onClose={() => setReviewing(null)} />;
+  }
   return (
     <Card title="Media in this project">
       {media.data?.length === 0 && <p className="text-sm text-zinc-400">Nothing uploaded yet.</p>}
@@ -360,6 +365,9 @@ function MediaList({ project }: { project: Project }) {
                 <span className="font-medium break-all">{m.original_filename}</span>
                 <span className={`text-sm ${STATUS_COLOR[m.status] ?? ""}`}>{m.status}</span>
                 <span className="ml-auto flex gap-3 text-xs">
+                  {m.status === "ready" && (
+                    <button className="rounded bg-zinc-100 px-2 py-0.5 font-medium text-zinc-900" onClick={() => setReviewing(m)}>Review</button>
+                  )}
                   {run && (run.status === "failed" || run.status === "canceled") && (
                     <button className="underline" onClick={() => action.mutate({ path: `/pipeline-runs/${run.id}/retry`, method: "POST" })}>retry</button>
                   )}

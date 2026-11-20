@@ -1,7 +1,7 @@
 """Importing this package registers every table on Base.metadata (Alembic autogenerate relies on it)."""
 
 from clipforge.db.models.analysis import Scene, SignalSeries, Speaker, Transcript, TranscriptSegment
-from clipforge.db.models.clips import Clip, ClipVersion, SubtitleTrack
+from clipforge.db.models.clips import AuditEvent, Clip, ClipVersion, SubtitleTrack
 from clipforge.db.models.highlights import HighlightCandidate, LlmCall
 from clipforge.db.models.media import (
     Artifact,
@@ -33,6 +33,7 @@ from clipforge.db.models.tenancy import (
 __all__ = [
     "Artifact",
     "ArtifactKind",
+    "AuditEvent",
     "Clip",
     "ClipVersion",
     "Creator",

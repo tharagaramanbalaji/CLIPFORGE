@@ -752,3 +752,68 @@ def test_layout_render_and_premiere_export(env: Any, media: dict[str, Path]) -> 
     assert {"clipforge_project.xml", "README.txt", "captions/01 Lay.srt"} <= set(z.namelist())
     xml = z.read("clipforge_project.xml").decode()
     assert "file://localhost/C:/Videos/cfr.mp4" in xml and "Lay (9x16)" in xml
+
+
+# --- Phase 8: review ---------------------------------------------------------------------------------------
+
+
+def test_review_approve_reject_audit_waveform_bulk(env: Any, media: dict[str, Path]) -> None:
+    import io
+    import zipfile
+
+    client, dispatcher, _ = env
+    ids = _setup(client)
+    done = _upload_all(client, ids, media["mp4"])
+    dispatcher.drain()
+    mid = done["media_id"]
+    a, b = (
+        _ok(
+            client.post(f"/api/v1/media/{mid}/clips", json={"start_ms": 0, "end_ms": 2000, "title": "A"}), 201
+        )[0],
+        _ok(
+            client.post(f"/api/v1/media/{mid}/clips", json={"start_ms": 1000, "end_ms": 3500, "title": "B"}),
+            201,
+        )[0],
+    )
+    assert client.post(f"/api/v1/clips/{a['id']}/approve").status_code == 409  # not rendered yet
+    _ok(client.post(f"/api/v1/clips/{a['id']}/render", json={"frame_mode": "blur_pad"}), 202)
+    dispatcher.drain()
+    _ok(client.patch(f"/api/v1/clips/{a['id']}", json={"title": "A2"}))
+    _ok(client.post(f"/api/v1/clips/{a['id']}/render", json={"frame_mode": "crop"}), 202)  # regenerate
+    dispatcher.drain()
+    versions = _ok(client.get(f"/api/v1/clips/{a['id']}/versions"))
+    assert [v["version"] for v in versions] == [2, 1] and all(v["status"] == "ready" for v in versions)
+    assert client.get(f"/api/v1/clip-versions/{versions[1]['id']}/video").status_code == 200  # old one kept
+
+    approved = _ok(client.post(f"/api/v1/clips/{a['id']}/approve"))
+    assert approved["review"] == "approved" and approved["reviewed_at"]
+    assert client.post(f"/api/v1/clips/{b['id']}/reject", json={"reason": ""}).status_code == 422
+    rejected = _ok(client.post(f"/api/v1/clips/{b['id']}/reject", json={"reason": "no payoff"}))
+    assert rejected["review"] == "rejected" and rejected["reject_reason"] == "no payoff"
+    assert _ok(client.post(f"/api/v1/clips/{b['id']}/reopen"))["review"] == "pending"
+
+    trail = _ok(client.get("/api/v1/audit", params={"entity_id": a["id"]}))
+    assert [e["action"] for e in trail][::-1] == [
+        "clip.create",
+        "clip.render",
+        "clip.update",
+        "clip.render",
+        "clip.approve",
+    ]
+    assert trail[0]["data"]["version_id"] == approved["current_version_id"]
+    assert [e["action"] for e in _ok(client.get("/api/v1/audit", params={"entity_id": b["id"]}))][:2] == [
+        "clip.reopen",
+        "clip.reject",
+    ]
+
+    wf = _ok(client.get(f"/api/v1/media/{mid}/waveform", params={"from_ms": 0, "to_ms": 4000, "points": 100}))
+    assert len(wf["peaks"]) == 100 and max(wf["peaks"]) > 0.05  # the fixture's 440 Hz tone
+    prev = client.get(f"/api/v1/media/{mid}/preview", headers={"Range": "bytes=0-9"})
+    assert prev.status_code == 206
+
+    z = zipfile.ZipFile(io.BytesIO(client.get(f"/api/v1/media/{mid}/approved.zip").content))
+    assert sorted(z.namelist()) == ["01 A2.mp4", "01 A2.srt", "clips.csv"] or sorted(z.namelist()) == [
+        "01 A2.mp4",
+        "clips.csv",
+    ]
+    assert "A2" in z.read("clips.csv").decode()

@@ -213,7 +213,7 @@ export function ClipsPanel({ mediaId }: { mediaId: string }) {
 }
 
 // Edit caption text; a changed word count spreads that caption's time evenly over the new words.
-function SubtitleEditor({ clipId }: { clipId: string }) {
+export function SubtitleEditor({ clipId }: { clipId: string }) {
   const qc = useQueryClient();
   const subs = useQuery({ queryKey: ["subs", clipId], queryFn: () => apiGet<Subs>(`/clips/${clipId}/subtitles`) });
   const [draft, setDraft] = useState<Record<number, string>>({});
