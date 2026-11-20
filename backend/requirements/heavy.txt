@@ -1,0 +1,3 @@
+# Heavy, rarely changing dependencies, installed in their own image layer (torch + CUDA wheels ~5 GB).
+# Keep in sync with the `asr` extra in pyproject.toml. Changing this file re-downloads torch.
+whisperx==3.8.6

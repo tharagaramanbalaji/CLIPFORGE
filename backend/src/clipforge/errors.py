@@ -34,3 +34,27 @@ class ExternalToolTimeout(ExternalToolError):
 
 class StorageError(ClipForgeError):
     pass
+
+
+class NotFound(ClipForgeError):
+    pass
+
+
+class PermissionDenied(ClipForgeError):
+    pass
+
+
+class RightsNotGranted(PermissionDenied):
+    """Upload/render attempted without a valid, unrevoked rights grant for the creator."""
+
+
+class Conflict(ClipForgeError):
+    pass
+
+
+class Gone(ClipForgeError):
+    pass
+
+
+class Canceled(ClipForgeError):
+    """The pipeline run was canceled while a stage was working."""

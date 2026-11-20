@@ -50,3 +50,11 @@ class LocalStorage:
 
     def delete(self, key: str) -> None:
         self._path(key).unlink(missing_ok=True)
+
+    def move(self, src_key: str, dst_key: str) -> None:
+        src, dst = self._path(src_key), self._path(dst_key)
+        dst.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            os.replace(src, dst)
+        except OSError as exc:
+            raise StorageError(f"failed to move {src_key!r} -> {dst_key!r}: {exc}") from exc

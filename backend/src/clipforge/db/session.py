@@ -21,6 +21,10 @@ def _session_factory() -> sessionmaker[Session]:
     return sessionmaker(bind=get_engine(), expire_on_commit=False)
 
 
+def new_session() -> Session:
+    return _session_factory()()
+
+
 def get_session() -> Iterator[Session]:
-    with _session_factory()() as session:
+    with new_session() as session:
         yield session

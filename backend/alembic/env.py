@@ -6,6 +6,7 @@ from alembic import context
 from sqlalchemy import engine_from_config, pool
 
 from clipforge.config import get_settings
+from clipforge.db import models  # noqa: F401  (registers every table on Base.metadata)
 from clipforge.db.base import Base
 
 config = context.config

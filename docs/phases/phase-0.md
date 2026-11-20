@@ -1,6 +1,6 @@
 # Phase 0: Architecture & scaffolding
 
-**Status:** Code complete. The Docker-stack checks are pending until WSL2 and Docker Desktop are installed.
+**Status:** Complete. Docker-stack acceptance checks passed on 2026-11-19: `/ready` ok (db + redis), RTX 3060 visible in worker-gpu and worker-render, FFmpeg 6.1.1 with NVENC h264/hevc + libass, 29/29 tests pass in Linux.
 
 ## Scope
 Repository layout, configuration, logging, error types, subprocess wrapper, storage interface, DB base + Alembic baseline, Celery app with queues, health/readiness API, GPU/FFmpeg capability report, Docker Compose stack, frontend shell, ADRs 0001–0005.
@@ -28,8 +28,8 @@ Repository layout, configuration, logging, error types, subprocess wrapper, stor
 | API serves `/health`; `/ready` reports dependency state without leaking details | ✅ verified live with uvicorn (503 without DB/Redis, as expected) |
 | GPU detected; FFmpeg has NVENC + libass (host) | ✅ RTX 3060 12288 MiB, driver 610.88; FFmpeg 9.0.2 with h264/hevc_nvenc, libx264, libass |
 | Frontend type-checks and builds | ✅ `npm run build` |
-| `docker compose up` works; `/ready` = ready; GPU and NVENC visible in `worker-gpu`/`worker-render` | ⏳ **pending**: WSL2/Docker not installed yet (see runbook) |
-| Alembic `upgrade head` runs against Postgres | ⏳ pending (runs as the `migrate` service) |
+| `docker compose up` works; `/ready` = ready; GPU and NVENC visible in `worker-gpu`/`worker-render` | ✅ 2026-11-19: `/ready` ok (database, redis); RTX 3060 + NVENC h264/hevc + libass in both workers; 29/29 tests pass inside the container |
+| Alembic `upgrade head` runs against Postgres | ✅ runs as the `migrate` service |
 
 ## Notes and decisions
 - The frontend runs on the host with Vite's proxy instead of in a container: faster reloads, one less image.

@@ -14,6 +14,8 @@ x-backend: &backend
   volumes:
     - ./backend:/app              # live code reload in dev
     - clipforge-data:/data        # media lives on the WSL2 filesystem (ADR-0002)
+    - clipforge-models:/models    # downloaded ASR/alignment models, kept across rebuilds
+    - ./evals:/evals              # highlight eval datasets + results
   depends_on:
     postgres: { condition: service_healthy }
     redis: { condition: service_healthy }
@@ -34,7 +36,7 @@ services:
       POSTGRES_USER: clipforge
       POSTGRES_PASSWORD: clipforge
       POSTGRES_DB: clipforge
-    ports: ["127.0.0.1:5432:5432"]
+    ports: ["127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"]  # 5432 is often taken by a Windows-installed Postgres
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U clipforge"]
@@ -63,7 +65,7 @@ services:
 
   worker-gpu:
     <<: [*backend, *gpu]
-    command: ["celery", "-A", "clipforge.workers.celery_app", "worker", "-Q", "gpu", "-c", "1", "-n", "gpu@%h", "-l", "INFO"]
+    command: ["celery", "-A", "clipforge.workers.celery_app", "worker", "-Q", "gpu", "-c", "1", "--max-tasks-per-child", "10", "-n", "gpu@%h", "-l", "INFO"]
 
   worker-render:
     <<: [*backend, *gpu]
@@ -76,3 +78,4 @@ services:
 volumes:
   pgdata:
   clipforge-data:
+  clipforge-models:

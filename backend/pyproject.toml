@@ -12,11 +12,24 @@ dependencies = [
     "psycopg[binary]>=3.2,<4",
     "alembic>=1.14,<2",
     "celery[redis]>=5.4,<6",
-    "redis>=5.2,<6",
+    "redis>=6.1,<7",  # kombu (celery[redis]) requires redis-py >= 6.1
     "structlog>=24.4",
+    "pwdlib[argon2]>=0.2,<1",
+    "pyjwt>=2.9,<3",
+    "email-validator>=2.2,<3",
+    "httpx>=0.28,<1",
 ]
 
 [project.optional-dependencies]
+# Speech stack (torch 2.8 + CUDA wheels, faster-whisper, wav2vec2 alignment, pyannote). Installed in the image.
+asr = [
+    "whisperx==3.8.6",  # keep in sync with requirements/heavy.txt
+]
+# Scene detection + frame analysis (Phase 3+)
+analysis = [
+    "scenedetect>=0.6.4,<0.7",
+    "opencv-python-headless>=4.10,<5",
+]
 dev = [
     "pytest>=8.3",
     "httpx>=0.28",
@@ -31,13 +44,18 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+clipforge = ["engine/highlights/prompts/*.md"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
     "integration: needs Postgres/Redis (run inside docker compose)",
-    "gpu: needs an NVIDIA GPU",
+    "media: needs ffmpeg/ffprobe on PATH (run inside docker compose)",
+    "gpu: needs an NVIDIA GPU and downloads ASR models (run on worker-gpu)",
+    "slow: takes minutes (real models on CPU, long audio)",
 ]
-addopts = "-m 'not integration and not gpu'"
+addopts = "-m 'not integration and not gpu and not media and not slow'"
 
 [tool.ruff]
 line-length = 110
@@ -47,6 +65,9 @@ src = ["src", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["E501"]
+
 [tool.mypy]
 python_version = "3.12"
 strict = true
@@ -55,7 +76,7 @@ mypy_path = "src"
 packages = ["clipforge"]
 
 [[tool.mypy.overrides]]
-module = ["celery.*", "kombu.*"]
+module = ["celery.*", "kombu.*", "pwdlib.*", "whisperx.*", "torch.*", "numpy.*", "pyannote.*", "scenedetect.*", "cv2.*", "transformers.*"]
 ignore_missing_imports = true
 
 # Celery's decorators and kombu are untyped; keep strictness everywhere else.
